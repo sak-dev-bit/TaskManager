@@ -1,3 +1,4 @@
+
 'use server';
 
 import { revalidatePath } from 'next/cache';
@@ -5,7 +6,7 @@ import { Task, taskSchema } from '@/lib/types';
 import { generateShareableLink as generateShareableLinkFlow } from '@/ai/flows/generate-shareable-link';
 import { auth } from '@/lib/firebase';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, where, Timestamp, getDoc } from 'firebase/firestore';
 
 async function getUserId() {
   const currentUser = auth.currentUser;
@@ -65,7 +66,10 @@ export async function updateTask(id: string, data: Partial<Omit<Task, 'id'>>) {
     const userId = await getUserId();
     const taskRef = doc(db, 'tasks', id);
 
-    // TODO: We should verify the user owns this task before updating.
+    const taskDoc = await getDoc(taskRef);
+    if (taskDoc.exists() && taskDoc.data().userId !== userId) {
+        throw new Error("User does not have permission to update this task.");
+    }
     
     const validation = taskSchema.partial().safeParse(data);
     if (!validation.success) {
@@ -82,7 +86,10 @@ export async function deleteTask(id: string) {
     const userId = await getUserId();
     const taskRef = doc(db, 'tasks', id);
 
-    // TODO: We should verify the user owns this task before deleting.
+    const taskDoc = await getDoc(taskRef);
+    if (taskDoc.exists() && taskDoc.data().userId !== userId) {
+        throw new Error("User does not have permission to delete this task.");
+    }
 
     await deleteDoc(taskRef);
     revalidatePath('/');
@@ -92,13 +99,17 @@ export async function deleteTask(id: string) {
 
 export async function generateShareableLink(): Promise<{ shareableLink: string }> {
     try {
+        const userId = await getUserId();
         const result = await generateShareableLinkFlow({
             taskListId: 'default-list',
-            userId: 'user-123',
+            userId: userId,
         });
         return result;
     } catch (error) {
         console.error("Error generating shareable link:", error);
+        if (error instanceof Error && error.message === "User not authenticated") {
+            return { shareableLink: 'ERROR' };
+        }
         return { shareableLink: 'ERROR' };
     }
 }
