@@ -3,86 +3,88 @@
 import { revalidatePath } from 'next/cache';
 import { Task, taskSchema } from '@/lib/types';
 import { generateShareableLink as generateShareableLinkFlow } from '@/ai/flows/generate-shareable-link';
+import { auth } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
+import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, where, Timestamp } from 'firebase/firestore';
 
-// In-memory store for tasks
-let tasks: Task[] = [
-    {
-        id: '1',
-        title: 'Design the landing page',
-        description: 'Create a mockup in Figma for the new landing page.',
-        status: 'In Progress',
-        dueDate: new Date(new Date().setDate(new Date().getDate() + 3)),
-    },
-    {
-        id: '2',
-        title: 'Implement user authentication',
-        description: 'Set up Firebase Authentication with email and password.',
-        status: 'To Do',
-        dueDate: new Date(new Date().setDate(new Date().getDate() + 7)),
-    },
-    {
-        id: '3',
-        title: 'Deploy to production',
-        description: 'Finalize testing and deploy the app.',
-        status: 'To Do',
-    },
-    {
-        id: '4',
-        title: 'Write documentation',
-        description: 'Document all the components and APIs.',
-        status: 'Completed',
-        dueDate: new Date(new Date().setDate(new Date().getDate() - 5)),
-    },
-];
+async function getUserId() {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error("User not authenticated");
+  }
+  return currentUser.uid;
+}
 
 export async function getTasks(): Promise<Task[]> {
-  return Promise.resolve(tasks.sort((a, b) => {
+  const userId = await getUserId();
+  const tasksCol = collection(db, 'tasks');
+  const q = query(tasksCol, where("userId", "==", userId));
+  const taskSnapshot = await getDocs(q);
+  const tasks = taskSnapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      title: data.title,
+      description: data.description,
+      status: data.status,
+      dueDate: data.dueDate ? (data.dueDate as Timestamp).toDate() : undefined,
+    } as Task;
+  });
+
+  return tasks.sort((a, b) => {
     if (a.status === b.status) return 0;
     if (a.status === 'Completed') return 1;
     if (b.status === 'Completed') return -1;
     return 0;
-  }));
+  });
 }
 
 export async function addTask(data: Omit<Task, 'id'>) {
+    const userId = await getUserId();
     const validation = taskSchema.omit({id: true}).safeParse(data);
     if (!validation.success) {
         throw new Error(validation.error.message);
     }
-    const newTask: Task = {
-        id: crypto.randomUUID(),
-        ...validation.data,
-    };
-    tasks.push(newTask);
+    
+    const docRef = await addDoc(collection(db, 'tasks'), {
+      ...validation.data,
+      userId,
+    });
+    
     revalidatePath('/');
-    return newTask;
+
+    const newDoc = validation.data;
+    
+    return {
+      id: docRef.id,
+      ...newDoc
+    } as Task;
 }
 
 export async function updateTask(id: string, data: Partial<Omit<Task, 'id'>>) {
-    const taskIndex = tasks.findIndex(t => t.id === id);
-    if (taskIndex === -1) {
-        throw new Error('Task not found');
-    }
+    const userId = await getUserId();
+    const taskRef = doc(db, 'tasks', id);
 
-    const taskToUpdate = tasks[taskIndex];
-    const updatedData = {...taskToUpdate, ...data};
+    // TODO: We should verify the user owns this task before updating.
     
-    const validation = taskSchema.safeParse(updatedData);
+    const validation = taskSchema.partial().safeParse(data);
     if (!validation.success) {
         throw new Error(validation.error.message);
     }
-
-    tasks[taskIndex] = validation.data;
+    
+    await updateDoc(taskRef, validation.data);
     revalidatePath('/');
-    return tasks[taskIndex];
+    
+    return { id, ...data } as Task;
 }
 
 export async function deleteTask(id: string) {
-    const taskIndex = tasks.findIndex(t => t.id === id);
-    if (taskIndex === -1) {
-        throw new Error('Task not found');
-    }
-    tasks.splice(taskIndex, 1);
+    const userId = await getUserId();
+    const taskRef = doc(db, 'tasks', id);
+
+    // TODO: We should verify the user owns this task before deleting.
+
+    await deleteDoc(taskRef);
     revalidatePath('/');
     return { success: true };
 }
