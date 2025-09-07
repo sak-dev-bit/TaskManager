@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 
 export default function Home() {
-  const { user, loading: authLoading, signIn } = useAuth();
+  const { user, loading: authLoading, signIn, getIdToken } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
 
@@ -19,8 +19,11 @@ export default function Home() {
     async function loadTasks() {
       if (user) {
         setLoadingTasks(true);
-        const userTasks = await getTasks();
-        setTasks(userTasks);
+        const idToken = await getIdToken();
+        if (idToken) {
+          const userTasks = await getTasks(idToken);
+          setTasks(userTasks);
+        }
         setLoadingTasks(false);
       } else {
         setTasks([]);
@@ -28,7 +31,7 @@ export default function Home() {
       }
     }
     loadTasks();
-  }, [user]);
+  }, [user, getIdToken]);
 
   const columns: TaskStatus[] = [...taskStatus];
   

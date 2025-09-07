@@ -14,6 +14,7 @@ import { Button } from './ui/button';
 import { generateShareableLink } from '@/app/actions';
 import { Check, Copy, Loader2, TriangleAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
 import { Input } from './ui/input';
 
 interface ShareDialogProps {
@@ -26,12 +27,22 @@ export function ShareDialog({ children }: ShareDialogProps) {
   const [isCopied, setIsCopied] = useState(false);
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
+  const { getIdToken } = useAuth();
 
   const handleGenerateLink = () => {
     startTransition(async () => {
       setLink('');
       setIsCopied(false);
-      const result = await generateShareableLink();
+      const idToken = await getIdToken();
+      if (!idToken) {
+        toast({
+          variant: 'destructive',
+          title: 'Authentication error',
+          description: 'Please sign in again.',
+        });
+        return;
+      }
+      const result = await generateShareableLink(idToken);
       setLink(result.shareableLink);
     });
   };

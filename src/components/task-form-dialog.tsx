@@ -12,6 +12,7 @@ import { taskSchema, taskStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { addTask, updateTask } from '@/app/actions';
+import { useAuth } from '@/hooks/use-auth';
 
 import {
   Dialog,
@@ -57,6 +58,7 @@ export function TaskFormDialog({ children, task }: TaskFormDialogProps) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
+  const { getIdToken } = useAuth();
 
   const form = useForm<Omit<Task, 'id'>>({
     resolver: zodResolver(taskSchema.omit({ id: true })),
@@ -71,14 +73,23 @@ export function TaskFormDialog({ children, task }: TaskFormDialogProps) {
   const onSubmit = (values: Omit<Task, 'id'>) => {
     startTransition(async () => {
       try {
+        const idToken = await getIdToken();
+        if (!idToken) {
+          toast({
+            variant: 'destructive',
+            title: 'Authentication error',
+            description: 'Please sign in again.',
+          });
+          return;
+        }
         if (task) {
-          await updateTask(task.id, values);
+          await updateTask(idToken, task.id, values);
           toast({
             title: 'Task Updated',
             description: `The task "${values.title}" has been updated.`,
           });
         } else {
-          await addTask(values);
+          await addTask(idToken, values);
           toast({
             title: 'Task Created',
             description: `A new task "${values.title}" has been created.`,

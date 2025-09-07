@@ -32,12 +32,14 @@ import {
 import { useTransition } from 'react';
 import { deleteTask } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
 import { TaskFormDialog } from './task-form-dialog';
 import { cn } from '@/lib/utils';
 
 export function TaskCard({ task }: { task: Task }) {
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
+  const { getIdToken } = useAuth();
 
   const getStatusBadge = () => {
     switch (task.status) {
@@ -58,7 +60,16 @@ export function TaskCard({ task }: { task: Task }) {
 
   const handleDelete = () => {
     startTransition(async () => {
-      const result = await deleteTask(task.id);
+      const idToken = await getIdToken();
+      if (!idToken) {
+        toast({
+          variant: 'destructive',
+          title: 'Authentication error',
+          description: 'Please sign in again.',
+        });
+        return;
+      }
+      const result = await deleteTask(idToken, task.id);
       if (result.success) {
         toast({
           title: 'Task deleted',

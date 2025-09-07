@@ -4,20 +4,21 @@
 import { revalidatePath } from 'next/cache';
 import { Task, taskSchema } from '@/lib/types';
 import { generateShareableLink as generateShareableLinkFlow } from '@/ai/flows/generate-shareable-link';
-import { auth } from '@/lib/firebase';
 import { db } from '@/lib/firebase';
+import { admin } from '@/lib/firebase-admin';
 import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, where, Timestamp, getDoc } from 'firebase/firestore';
 
-async function getUserId() {
-  const currentUser = auth.currentUser;
-  if (!currentUser) {
-    throw new Error("User not authenticated");
+async function getUserId(idToken: string) {
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    return decodedToken.uid;
+  } catch (error) {
+    throw new Error("Invalid token");
   }
-  return currentUser.uid;
 }
 
-export async function getTasks(): Promise<Task[]> {
-  const userId = await getUserId();
+export async function getTasks(idToken: string): Promise<Task[]> {
+  const userId = await getUserId(idToken);
   const tasksCol = collection(db, 'tasks');
   const q = query(tasksCol, where("userId", "==", userId));
   const taskSnapshot = await getDocs(q);
@@ -40,8 +41,8 @@ export async function getTasks(): Promise<Task[]> {
   });
 }
 
-export async function addTask(data: Omit<Task, 'id'>) {
-    const userId = await getUserId();
+export async function addTask(idToken: string, data: Omit<Task, 'id'>) {
+    const userId = await getUserId(idToken);
     const validation = taskSchema.omit({id: true}).safeParse(data);
     if (!validation.success) {
         throw new Error(validation.error.message);
@@ -62,8 +63,8 @@ export async function addTask(data: Omit<Task, 'id'>) {
     } as Task;
 }
 
-export async function updateTask(id: string, data: Partial<Omit<Task, 'id'>>) {
-    const userId = await getUserId();
+export async function updateTask(idToken: string, id: string, data: Partial<Omit<Task, 'id'>>) {
+    const userId = await getUserId(idToken);
     const taskRef = doc(db, 'tasks', id);
 
     const taskDoc = await getDoc(taskRef);
@@ -82,8 +83,8 @@ export async function updateTask(id: string, data: Partial<Omit<Task, 'id'>>) {
     return { id, ...data } as Task;
 }
 
-export async function deleteTask(id: string) {
-    const userId = await getUserId();
+export async function deleteTask(idToken: string, id: string) {
+    const userId = await getUserId(idToken);
     const taskRef = doc(db, 'tasks', id);
 
     const taskDoc = await getDoc(taskRef);
@@ -97,9 +98,9 @@ export async function deleteTask(id: string) {
 }
 
 
-export async function generateShareableLink(): Promise<{ shareableLink: string }> {
+export async function generateShareableLink(idToken: string): Promise<{ shareableLink: string }> {
     try {
-        const userId = await getUserId();
+        const userId = await getUserId(idToken);
         const result = await generateShareableLinkFlow({
             taskListId: 'default-list',
             userId: userId,
@@ -107,9 +108,6 @@ export async function generateShareableLink(): Promise<{ shareableLink: string }
         return result;
     } catch (error) {
         console.error("Error generating shareable link:", error);
-        if (error instanceof Error && error.message === "User not authenticated") {
-            return { shareableLink: 'ERROR' };
-        }
         return { shareableLink: 'ERROR' };
     }
 }
