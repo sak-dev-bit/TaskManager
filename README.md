@@ -224,3 +224,6 @@ For support, please:
 ---
 
 Built with ❤️ using Next.js, Firebase, and modern web technologies.
+![alt text](<ScreenShots/Screenshot 2025-09-07 215018.png>)
+
+![alt text](<ScreenShots/Screenshot 2025-09-07 224412.png>)
